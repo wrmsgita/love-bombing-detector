@@ -885,7 +885,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ─── Tabs ─────────────────────────────────────────────────────────────────────
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["🔍 Analisis Manual", "📁 Upload CSV", "📸 Scan Chat", "📊 Akurasi Model", "📖 Panduan"])
+tab1, tab2, tab3 = st.tabs(["🔍 Analisis Manual", "📸 Scan Chat", "📊 Akurasi Model"])
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -1015,110 +1015,9 @@ with tab1:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TAB 2: Upload CSV
+# TAB 2: Scan Chat Image
 # ══════════════════════════════════════════════════════════════════════
 with tab2:
-    st.markdown("""
-    <div style="text-align:center; padding:8px 0 16px;">
-        <span style="font-size:1.6rem; font-weight:900; color:#7c5a9e;">📁 Upload Dataset CSV</span><br>
-        <span style="font-size:0.9rem; color:#a07cc5; font-weight:600;">Analisis banyak data sekaligus~ 🗂️</span>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    with st.expander("📋 Format CSV yang dibutuhkan"):
-        sample_df = pd.DataFrame([{
-            "msg_per_day_week1": 45.2,
-            "msg_per_day_week4": 5.1,
-            "praise_ratio": 0.72,
-            "avg_response_time_min": 1.2,
-            "response_time_std": 0.5,
-            "emotional_intensity_score": 8.9,
-            "commitment_pressure_ratio": 0.45,
-            "isolation_attempt_count": 12,
-            "avg_msg_length": 280.0,
-            "msg_length_variance": 120.0,
-            "escalation_speed_days": 3.0,
-            "consistency_score": 2.5,
-            "night_msg_ratio": 0.55,
-            "apology_count": 28,
-            "future_planning_ratio": 0.68,
-        }])
-        st.dataframe(sample_df)
-        
-        csv_sample = sample_df.to_csv(index=False)
-        st.download_button("⬇️ Download template CSV", csv_sample, "template_love_bombing.csv", "text/csv")
-    
-    uploaded = st.file_uploader("Upload file CSV", type=["csv"])
-    
-    if uploaded:
-        df_raw = pd.read_csv(uploaded)
-        st.info(f"✓ File diupload: {len(df_raw):,} baris, {len(df_raw.columns)} kolom")
-        
-        if st.button("🔍 Analisis Semua Data"):
-            if model_data is None:
-                st.error("Model belum tersedia.")
-            else:
-                with st.spinner("Memproses..."):
-                    df_result = predict_batch(df_raw)
-                
-                st.markdown("### Hasil Prediksi")
-                
-                c1, c2, c3, c4 = st.columns(4)
-                total = len(df_result)
-                lb_count = (df_result["prediction"] == 1).sum()
-                lb_pct = lb_count / total * 100
-                avg_prob = df_result["love_bombing_probability"].mean()
-                
-                for col, val, label in [
-                    (c1, f"{total:,}", "Total Data"),
-                    (c2, f"{lb_count:,}", "Terdeteksi LB"),
-                    (c3, f"{lb_pct:.1f}%", "Persentase LB"),
-                    (c4, f"{avg_prob*100:.1f}%", "Avg Probability"),
-                ]:
-                    col.markdown(f'<div class="metric-card"><div class="metric-value">{val}</div><div class="metric-label">{label}</div></div>', unsafe_allow_html=True)
-                
-                st.markdown("---")
-                
-                # Risk distribution
-                risk_counts = df_result["risk_level"].value_counts()
-                st.markdown("**Distribusi Risk Level:**")
-                level_colors = {"LOW":"#4ade80","MEDIUM":"#facc15","HIGH":"#f87171","CRITICAL":"#f472b6"}
-                level_bg     = {"LOW":"#dcfce7","MEDIUM":"#fef9c3","HIGH":"#fee2e2","CRITICAL":"#fce7f3"}
-                for lvl in ["LOW", "MEDIUM", "HIGH", "CRITICAL"]:
-                    count = risk_counts.get(lvl, 0)
-                    pct = count / total * 100
-                    clr = level_colors[lvl]
-                    bg  = level_bg[lvl]
-                    st.markdown(f"""
-                    <div style="display:flex;align-items:center;gap:12px;margin:8px 0;">
-                        <span style="width:90px;background:{bg};border:2px solid {clr};border-radius:50px;
-                                     padding:3px 10px;font-weight:800;font-size:0.82rem;color:{clr};text-align:center;">
-                            {lvl}
-                        </span>
-                        <div style="flex:1;background:#f3e8ff;border-radius:50px;height:12px;">
-                            <div style="width:{pct:.1f}%;background:linear-gradient(90deg,{clr}88,{clr});
-                                        height:100%;border-radius:50px;"></div>
-                        </div>
-                        <span style="color:#7c5a9e;font-size:0.9rem;font-weight:700;width:80px;">
-                            {count:,} ({pct:.0f}%)
-                        </span>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                st.markdown("---")
-                st.markdown("**Data Hasil Prediksi:**")
-                display_cols = ["love_bombing_probability", "prediction", "risk_level"] + \
-                               [c for c in df_result.columns if c not in ["love_bombing_probability","prediction","risk_level","label"]]
-                st.dataframe(df_result[display_cols].head(200), use_container_width=True)
-                
-                csv_out = df_result.to_csv(index=False)
-                st.download_button("⬇️ Download Hasil Lengkap", csv_out, "hasil_prediksi.csv", "text/csv")
-
-
-# ══════════════════════════════════════════════════════════════════════
-# TAB 3: Scan Chat Image (KAWAII ✨)
-# ══════════════════════════════════════════════════════════════════════
-with tab3:
     # ── Header ──
     st.markdown("""
     <div style="text-align:center; padding:20px 0 8px;">
@@ -1540,9 +1439,9 @@ with tab3:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# TAB 4: Akurasi Model
+# TAB 3: Akurasi Model
 # ══════════════════════════════════════════════════════════════════════
-with tab4:
+with tab3:
     st.markdown("""
     <div style="text-align:center; padding:8px 0 16px;">
         <span style="font-size:1.6rem; font-weight:900; color:#7c5a9e;">📊 Performa Model</span><br>
@@ -1614,79 +1513,3 @@ with tab4:
         st.dataframe(fi_df, use_container_width=True, hide_index=True)
 
 
-# ══════════════════════════════════════════════════════════════════════
-# TAB 5: Panduan
-# ══════════════════════════════════════════════════════════════════════
-with tab5:
-    st.markdown("### 📖 Cara Penggunaan")
-    
-    st.markdown("""
-    #### Langkah Persiapan
-    
-    **1. Install Dependensi**
-    ```bash
-    pip install anthropic pandas scikit-learn streamlit matplotlib seaborn Pillow
-    ```
-
-    **2. Generate Dataset (100.000 data)**
-    ```bash
-    python generate_dataset.py
-    ```
-    
-    **3. Training Model**
-    ```bash
-    python train_model.py
-    ```
-
-    **4. Jalankan Web App**
-    ```bash
-    streamlit run app.py
-    ```
-
-    **5. Fitur Scan Chat (Tab 📸)**
-    - Upload screenshot chat dari WhatsApp, Instagram DM, Telegram, Line, dll
-    - Pilih platform atau biarkan Auto-detect
-    - Claude Vision AI akan menganalisis gambar dan mengekstrak pola pesan
-    - Butuh `ANTHROPIC_API_KEY` yang valid di environment variable
-    
-    ---
-    
-    #### Deploy ke Hugging Face Spaces (Gratis)
-    
-    1. Buat akun di [huggingface.co](https://huggingface.co)
-    2. Buat Space baru → pilih **Streamlit**
-    3. Upload semua file:
-       - `app.py`
-       - `model_love_bombing.pkl`
-       - `metrics_report.json`
-       - `requirements.txt`
-    4. App otomatis live dalam beberapa menit
-    
-    ---
-    
-    #### Penjelasan Fitur
-    """)
-    
-    feature_data = [
-        ("msg_per_day_week1", "Pesan/hari minggu 1", "Frekuensi pesan di minggu pertama – love bomber sangat aktif di awal"),
-        ("praise_ratio", "Rasio pujian", "Proporsi pesan yang mengandung pujian berlebihan"),
-        ("avg_response_time_min", "Waktu respons", "Love bomber selalu merespons sangat cepat untuk menciptakan ketergantungan"),
-        ("emotional_intensity_score", "Intensitas emosi", "Seberapa intens emosi yang ditunjukkan per pesan"),
-        ("commitment_pressure_ratio", "Tekanan komitmen", "Seberapa sering memaksa komitmen (kenalan 2 hari tapi minta jadi pacar)"),
-        ("isolation_attempt_count", "Percobaan isolasi", "Upaya memisahkan korban dari teman/keluarga"),
-        ("escalation_speed_days", "Kecepatan eskalasi", "Berapa hari sampai hubungan menjadi sangat intens – makin cepat makin merah"),
-        ("consistency_score", "Konsistensi perilaku", "Perilaku konsisten atau berubah drastis – love bomber berubah setelah 'dapat'"),
-        ("night_msg_ratio", "Pesan malam", "Pesan tengah malam berlebihan bisa menandakan kontrol"),
-    ]
-    
-    ft_df = pd.DataFrame(feature_data, columns=["Fitur", "Label", "Penjelasan"])
-    st.dataframe(ft_df, use_container_width=True, hide_index=True)
-    
-    st.markdown("""
-    ---
-    #### ⚠️ Disclaimer
-    
-    Sistem ini **bukan alat diagnosis** hubungan. Hasil prediksi bersifat indikatif berdasarkan pola statistik.
-    Selalu konsultasikan dengan profesional (psikolog/konselor) untuk situasi yang membutuhkan penanganan serius.
-    Dataset yang digunakan adalah data sintetis untuk tujuan penelitian.
-    """)
