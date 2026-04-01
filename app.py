@@ -19,7 +19,7 @@ matplotlib.use('Agg')
 import seaborn as sns
 from sklearn.metrics import roc_curve
 from PIL import Image
-import anthropic
+import google.generativeai as genai
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -631,73 +631,52 @@ KAWAII_MASCOTS = {
 }
 
 def analyze_chat_image(image_bytes: bytes, platform: str, media_type: str = "image/jpeg") -> dict:
-    """Kirim screenshot ke Claude Vision → ekstrak fitur love bombing."""
-    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-    client = anthropic.Anthropic(api_key=api_key)
-    img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
+    """Kirim screenshot ke Gemini Vision → ekstrak fitur love bombing."""
+    api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-1.5-flash")
+
     platform_desc = PLATFORM_PROMPTS.get(platform, PLATFORM_PROMPTS["Auto-detect"])
+    pil_img = Image.open(io.BytesIO(image_bytes))
 
-    system_prompt = """Kamu adalah ahli psikologi digital dan deteksi love bombing.
-Tugasmu: analisis screenshot chat dan ekstrak fitur-fitur kuantitatif untuk model ML deteksi love bombing.
-SELALU jawab dalam format JSON yang valid, tidak ada teks lain di luar JSON."""
+    prompt = f"""Kamu adalah ahli psikologi digital dan deteksi love bombing.
+Ini adalah screenshot {platform_desc}.
 
-    user_prompt = f"""Ini adalah screenshot {platform_desc}.
-
-Analisis percakapan ini dan kembalikan JSON dengan format PERSIS seperti ini:
+Analisis percakapan ini dan kembalikan JSON dengan format PERSIS seperti ini (tidak ada teks lain):
 
 {{
   "platform_detected": "nama platform yang terdeteksi",
-  "sender_name": "nama/username pengirim utama (yang mungkin melakukan love bombing, bukan si penerima)",
+  "sender_name": "nama/username pengirim utama (yang mungkin melakukan love bombing)",
   "msg_count_visible": <jumlah pesan yang terlihat>,
   "extracted_messages": [
     {{"sender": "nama", "text": "isi pesan", "time": "waktu jika ada"}}
   ],
   "features": {{
-    "msg_per_day_week1": <estimasi pesan per hari 0-100, tinggi jika banyak pesan dalam waktu singkat>,
-    "msg_per_day_week4": <estimasi pesan per hari minggu ke-4, biasanya lebih rendah jika love bombing>,
-    "praise_ratio": <0.0-1.0, proporsi pesan berisi pujian berlebihan/love bombing words>,
+    "msg_per_day_week1": <estimasi pesan/hari 0-100, tinggi jika banyak pesan dalam waktu singkat>,
+    "msg_per_day_week4": <estimasi pesan/hari minggu ke-4, biasanya lebih rendah jika love bombing>,
+    "praise_ratio": <0.0-1.0, proporsi pesan berisi pujian berlebihan>,
     "avg_response_time_min": <estimasi waktu respons menit, rendah jika selalu cepat balas>,
     "response_time_std": <variansi waktu respons>,
     "emotional_intensity_score": <0-10, intensitas emosi rata-rata>,
-    "commitment_pressure_ratio": <0.0-1.0, proporsi pesan yang memaksa komitmen>,
+    "commitment_pressure_ratio": <0.0-1.0, proporsi pesan memaksa komitmen>,
     "isolation_attempt_count": <0-40, jumlah upaya isolasi dari orang lain>,
     "avg_msg_length": <panjang karakter rata-rata per pesan>,
     "msg_length_variance": <variansi panjang pesan>,
-    "escalation_speed_days": <estimasi hari sampai sangat intens, makin kecil makin merah>,
+    "escalation_speed_days": <estimasi hari sampai sangat intens, makin kecil makin bahaya>,
     "consistency_score": <0-10, 10=konsisten, rendah jika mood swing>,
     "night_msg_ratio": <0.0-1.0, proporsi pesan malam hari>,
     "apology_count": <jumlah permintaan maaf>,
     "future_planning_ratio": <0.0-1.0, proporsi membahas rencana masa depan bersama>
   }},
   "red_flags": ["daftar tanda bahaya yang terlihat dalam pesan"],
-  "analysis_summary": "Ringkasan analisis dalam Bahasa Indonesia, 2-3 kalimat, jelaskan pola yang terdeteksi",
-  "confidence": <0.0-1.0, seberapa yakin kamu dengan analisis ini berdasarkan kejelasan gambar>
+  "analysis_summary": "Ringkasan analisis dalam Bahasa Indonesia, 2-3 kalimat",
+  "confidence": <0.0-1.0, keyakinan berdasarkan kejelasan gambar>
 }}
 
-Jika gambar buram/tidak jelas/bukan screenshot chat, tetap kembalikan JSON tapi dengan confidence rendah dan features semua 0."""
+Jika gambar buram/bukan screenshot chat, kembalikan JSON dengan confidence rendah dan features semua 0."""
 
-    response = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=2500,
-        system=system_prompt,
-        messages=[{
-            "role": "user",
-            "content": [
-                {
-                    "type": "image",
-                    "source": {
-                        "type": "base64",
-                        "media_type": media_type,
-                        "data": img_b64,
-                    },
-                },
-                {"type": "text", "text": user_prompt},
-            ],
-        }],
-    )
-
-    raw = response.content[0].text.strip()
-    # Bersihkan jika ada markdown code block
+    response = model.generate_content([prompt, pil_img])
+    raw = response.text.strip()
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
     return json.loads(raw)
