@@ -634,7 +634,7 @@ def analyze_chat_image(image_bytes: bytes, platform: str, media_type: str = "ima
     """Kirim screenshot ke Gemini Vision → ekstrak fitur love bombing."""
     api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.0-flash-lite")
 
     platform_desc = PLATFORM_PROMPTS.get(platform, PLATFORM_PROMPTS["Auto-detect"])
     pil_img = Image.open(io.BytesIO(image_bytes))
