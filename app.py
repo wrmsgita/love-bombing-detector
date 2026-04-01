@@ -632,7 +632,8 @@ KAWAII_MASCOTS = {
 
 def analyze_chat_image(image_bytes: bytes, platform: str, media_type: str = "image/jpeg") -> dict:
     """Kirim screenshot ke Claude Vision → ekstrak fitur love bombing."""
-    client = anthropic.Anthropic()
+    api_key = st.secrets.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    client = anthropic.Anthropic(api_key=api_key)
     img_b64 = base64.standard_b64encode(image_bytes).decode("utf-8")
     platform_desc = PLATFORM_PROMPTS.get(platform, PLATFORM_PROMPTS["Auto-detect"])
 
