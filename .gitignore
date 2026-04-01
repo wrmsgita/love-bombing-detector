@@ -23,5 +23,10 @@ Thumbs.db
 # Claude Code config
 .claude/
 
+# Script internal (tidak perlu ditampilkan)
+generate_dataset.py
+train_model.py
+model_plots.png
+
 # Streamlit secrets (jangan di-push!)
 .streamlit/secrets.toml
