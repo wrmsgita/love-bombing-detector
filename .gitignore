@@ -1,0 +1,27 @@
+# Dataset (besar, tidak perlu untuk deploy)
+dataset_love_bombing.csv
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Virtual environment
+venv/
+env/
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Claude Code config
+.claude/
+
+# Streamlit secrets (jangan di-push!)
+.streamlit/secrets.toml
