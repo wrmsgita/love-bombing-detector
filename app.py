@@ -10,7 +10,6 @@ import numpy as np
 import pickle
 import json
 import os
-import base64
 import io
 import re
 import matplotlib.pyplot as plt
@@ -18,8 +17,8 @@ import matplotlib
 matplotlib.use('Agg')
 import seaborn as sns
 from sklearn.metrics import roc_curve
-from PIL import Image
-import google.generativeai as genai
+from PIL import Image, ImageEnhance, ImageFilter
+import pytesseract
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -631,55 +630,160 @@ KAWAII_MASCOTS = {
 }
 
 def analyze_chat_image(image_bytes: bytes, platform: str, media_type: str = "image/jpeg") -> dict:
-    """Kirim screenshot ke Gemini Vision → ekstrak fitur love bombing."""
-    api_key = st.secrets.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_API_KEY")
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel("gemini-2.0-flash-lite")
+    """OCR lokal + NLP keyword — tanpa API, 100% gratis."""
 
-    platform_desc = PLATFORM_PROMPTS.get(platform, PLATFORM_PROMPTS["Auto-detect"])
+    # ── Keyword lists ──
+    KW_PRAISE = [
+        "cantik","cakep","ganteng","manis","lucu","imut","sempurna","terbaik",
+        "luar biasa","segalanya","bidadari","putri","princess","tersayang",
+        "sayang","cinta","spesial","istimewa","amazing","beautiful","gorgeous",
+        "love you","ily","i love you","miss you","kangen","rindu","my love",
+        "kamu sempurna","kamu terbaik","kamu segalanya","kamu berbeda",
+        "tidak ada yang sepertimu","ga ada yang sepertimu","paling cantik",
+        "paling ganteng","paling baik","kamu baik banget","baik banget",
+    ]
+    KW_COMMIT = [
+        "jadi pacarku","jadi pacar","mau sama aku","kita resmi","pacaran yuk",
+        "nikah","menikah","married","selamanya","forever","bareng terus",
+        "jangan pergi","jangan tinggalkan","kamu milikku","hanya aku","cuma aku",
+        "milih aku","pilih aku","jangan sama orang lain","exclusive","status kita",
+        "kita gimana","mau gak","mau ga","hubungan kita","relationship kita",
+        "kita resmi","define the relationship","dtr",
+    ]
+    KW_ISOLATE = [
+        "jangan ketemu dia","ngapain sama dia","ngapain sama mereka",
+        "tinggalin dia","jauh dari mereka","mereka jahat","ga perlu teman",
+        "aku cukup","ga usah keluar","kenapa sama dia","siapa dia itu",
+        "jangan deket sama","hindari dia","block dia","ga boleh sama",
+        "mereka ga bagus","mereka ga baik","ga perlu mereka",
+    ]
+    KW_FUTURE = [
+        "nanti kita","masa depan kita","rumah kita","anak kita","rencana kita",
+        "liburan kita","besok kita","kita akan","kita bakal","wedding kita",
+        "pernikahan kita","dream","impian kita","suatu hari nanti","tahun depan",
+        "bulan depan kita","our future","our wedding","our home","our kids",
+    ]
+    KW_APOLOGY = [
+        "maaf","sorry","minta maaf","mohon maaf","sori","sory","ampun",
+        "forgive me","forgive","salahku","aku salah","kesalahanku",
+        "aku minta maaf","tolong maafin","tolong maafkan",
+    ]
+    KW_NIGHT = [
+        "22:","23:","00:","01:","02:","03:","04:","05:",
+        "10 pm","11 pm","12 am","1 am","2 am","3 am","4 am","5 am",
+    ]
+    KW_EMOTION = [
+        "!!!","❤","💕","💓","💗","💖","💘","😭","😍","🥺","💔","🙏",
+        "sangat","banget","sekali","sungguh","benar-benar","literally",
+        "tolong","please","desperate","ga bisa tanpa","ga bisa hidup tanpa",
+        "butuh kamu","need you","butuh banget",
+    ]
+
+    # ── 1. Preprocess gambar ──
     pil_img = Image.open(io.BytesIO(image_bytes))
+    w, h = pil_img.size
+    if w < 800:
+        pil_img = pil_img.resize((w * 2, h * 2), Image.LANCZOS)
 
-    prompt = f"""Kamu adalah ahli psikologi digital dan deteksi love bombing.
-Ini adalah screenshot {platform_desc}.
+    img_gray = pil_img.convert("L")
+    img_ready = ImageEnhance.Contrast(
+        ImageEnhance.Sharpness(img_gray).enhance(2.0)
+    ).enhance(1.5)
 
-Analisis percakapan ini dan kembalikan JSON dengan format PERSIS seperti ini (tidak ada teks lain):
+    # ── 2. OCR ──
+    try:
+        raw_text = pytesseract.image_to_string(
+            img_ready, lang="ind+eng", config="--psm 6"
+        )
+    except Exception:
+        try:
+            raw_text = pytesseract.image_to_string(img_ready, config="--psm 6")
+        except Exception as e:
+            raw_text = ""
 
-{{
-  "platform_detected": "nama platform yang terdeteksi",
-  "sender_name": "nama/username pengirim utama (yang mungkin melakukan love bombing)",
-  "msg_count_visible": <jumlah pesan yang terlihat>,
-  "extracted_messages": [
-    {{"sender": "nama", "text": "isi pesan", "time": "waktu jika ada"}}
-  ],
-  "features": {{
-    "msg_per_day_week1": <estimasi pesan/hari 0-100, tinggi jika banyak pesan dalam waktu singkat>,
-    "msg_per_day_week4": <estimasi pesan/hari minggu ke-4, biasanya lebih rendah jika love bombing>,
-    "praise_ratio": <0.0-1.0, proporsi pesan berisi pujian berlebihan>,
-    "avg_response_time_min": <estimasi waktu respons menit, rendah jika selalu cepat balas>,
-    "response_time_std": <variansi waktu respons>,
-    "emotional_intensity_score": <0-10, intensitas emosi rata-rata>,
-    "commitment_pressure_ratio": <0.0-1.0, proporsi pesan memaksa komitmen>,
-    "isolation_attempt_count": <0-40, jumlah upaya isolasi dari orang lain>,
-    "avg_msg_length": <panjang karakter rata-rata per pesan>,
-    "msg_length_variance": <variansi panjang pesan>,
-    "escalation_speed_days": <estimasi hari sampai sangat intens, makin kecil makin bahaya>,
-    "consistency_score": <0-10, 10=konsisten, rendah jika mood swing>,
-    "night_msg_ratio": <0.0-1.0, proporsi pesan malam hari>,
-    "apology_count": <jumlah permintaan maaf>,
-    "future_planning_ratio": <0.0-1.0, proporsi membahas rencana masa depan bersama>
-  }},
-  "red_flags": ["daftar tanda bahaya yang terlihat dalam pesan"],
-  "analysis_summary": "Ringkasan analisis dalam Bahasa Indonesia, 2-3 kalimat",
-  "confidence": <0.0-1.0, keyakinan berdasarkan kejelasan gambar>
-}}
+    lines = [l.strip() for l in raw_text.split("\n") if len(l.strip()) > 3]
+    full_text_lower = raw_text.lower()
+    n_lines = max(len(lines), 1)
 
-Jika gambar buram/bukan screenshot chat, kembalikan JSON dengan confidence rendah dan features semua 0."""
+    # ── 3. Hitung keyword ──
+    def _count(kws):
+        return sum(1 for kw in kws if kw.lower() in full_text_lower)
 
-    response = model.generate_content([prompt, pil_img])
-    raw = response.text.strip()
-    raw = re.sub(r"^```(?:json)?\s*", "", raw)
-    raw = re.sub(r"\s*```$", "", raw)
-    return json.loads(raw)
+    n_praise   = _count(KW_PRAISE)
+    n_commit   = _count(KW_COMMIT)
+    n_isolate  = _count(KW_ISOLATE)
+    n_future   = _count(KW_FUTURE)
+    n_apology  = _count(KW_APOLOGY)
+    n_night    = _count(KW_NIGHT)
+    n_emotion  = _count(KW_EMOTION)
+
+    # ── 4. Hitung fitur ──
+    msg_lengths = [len(l) for l in lines]
+    avg_len = float(np.mean(msg_lengths)) if msg_lengths else 50.0
+    len_var = float(np.std(msg_lengths))  if msg_lengths else 20.0
+
+    praise_ratio   = round(min(n_praise  / n_lines * 1.5,  1.0), 3)
+    commit_ratio   = round(min(n_commit  / n_lines * 2.0,  1.0), 3)
+    future_ratio   = round(min(n_future  / n_lines * 2.0,  1.0), 3)
+    night_ratio    = round(min(n_night   / n_lines,        1.0), 3)
+    emotion_score  = round(min((n_praise + n_emotion * 0.5) / n_lines * 10, 10.0), 2)
+    intensity      = (n_praise + n_commit * 2 + n_emotion) / n_lines
+    escalation     = round(max(3.0, 60.0 - intensity * 150.0), 1)
+    consistency    = round(max(0.0, 10.0 - len_var / 30.0), 2)
+    msg_w1         = round(min(n_lines * 4.0, 100.0), 1)
+
+    features = {
+        "msg_per_day_week1":         msg_w1,
+        "msg_per_day_week4":         round(msg_w1 * 0.55, 1),
+        "praise_ratio":              praise_ratio,
+        "avg_response_time_min":     5.0,
+        "response_time_std":         3.0,
+        "emotional_intensity_score": emotion_score,
+        "commitment_pressure_ratio": commit_ratio,
+        "isolation_attempt_count":   n_isolate * 3,
+        "avg_msg_length":            round(avg_len, 1),
+        "msg_length_variance":       round(len_var, 1),
+        "escalation_speed_days":     escalation,
+        "consistency_score":         consistency,
+        "night_msg_ratio":           night_ratio,
+        "apology_count":             n_apology,
+        "future_planning_ratio":     future_ratio,
+    }
+
+    # ── 5. Red flags ──
+    red_flags = []
+    if praise_ratio  > 0.25: red_flags.append(f"Pujian berlebihan: {n_praise}x terdeteksi")
+    if commit_ratio  > 0.15: red_flags.append(f"Tekanan komitmen: {n_commit}x terdeteksi")
+    if n_isolate      > 0:   red_flags.append(f"Indikasi isolasi: {n_isolate}x terdeteksi")
+    if future_ratio  > 0.25: red_flags.append(f"Rencana masa depan terlalu dini: {n_future}x")
+    if n_night        > 0:   red_flags.append(f"Pesan jam malam: {n_night}x terdeteksi")
+    if n_apology      > 3:   red_flags.append(f"Terlalu banyak permintaan maaf: {n_apology}x")
+    if emotion_score  > 7:   red_flags.append("Intensitas emosi sangat tinggi")
+
+    # ── 6. Summary ──
+    total = n_praise + n_commit + n_isolate + n_future + n_emotion
+    if len(raw_text.strip()) < 30:
+        summary = "Teks tidak berhasil diekstrak dari gambar. Coba upload screenshot yang lebih jelas dan resolusi lebih tinggi."
+    elif total == 0:
+        summary = "Tidak ditemukan pola love bombing yang signifikan. Percakapan terlihat normal berdasarkan analisis keyword."
+    elif total < 5:
+        summary = f"Ditemukan beberapa sinyal ringan: {n_praise} pujian, {n_commit} tekanan komitmen. Perlu dipantau lebih lanjut."
+    else:
+        summary = (f"Terdeteksi pola love bombing dengan {n_praise} ekspresi pujian berlebihan, "
+                   f"{n_commit} tekanan komitmen, dan {n_isolate} indikasi isolasi dari teks yang dianalisis.")
+
+    confidence = round(min(len(raw_text.strip()) / 400.0, 0.80), 2)
+
+    return {
+        "platform_detected":  platform,
+        "sender_name":        "—",
+        "msg_count_visible":  len(lines),
+        "extracted_messages": [{"sender": "—", "text": l, "time": ""} for l in lines[:15]],
+        "features":           features,
+        "red_flags":          red_flags,
+        "analysis_summary":   summary,
+        "confidence":         confidence,
+    }
 
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
